@@ -1,6 +1,8 @@
 #!/usr/bin/env php
 <?php
 
+// TODO: Change to New Functionality
+
 $currentpath = dirname(realpath(__FILE__));
 require("{$currentpath}/../conf/irrpt.conf");
 require("{$currentpath}/../inc/pfxlist.inc");

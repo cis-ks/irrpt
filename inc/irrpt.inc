@@ -6,7 +6,7 @@ require_once(rtrim(__DIR__, '/') . '/utils.inc');
 
 class irrpt
 {
-    public static function track($cvs, $file)
+    public static function track(&$cvs, $file)
     {  
         if (($rev = $cvs->update($file)) == FALSE) {
             status(STATUS_ERROR, "Error: Unable to perform CVS update, aborting.");
@@ -21,7 +21,7 @@ class irrpt
         return $rev;
     }
 
-    public static function update_email($cvs, $cfg, $file, $email, $asString, $object, $rev, $type)
+    public static function update_email(&$cvs, &$cfg, $file, $email, $asString, $object, $rev, $type)
     {
         $content = "";
     
@@ -53,7 +53,7 @@ class irrpt
             mail($cfg['update']['localcopy'], $subject, $content, $headers);
     }
 
-    public static function process($cfg, $irr, $peeras, $version, $object)
+    public static function process(&$cfg, &$irr, $peeras, $version, $object)
     {
         $resolve_result = $irr->resolve($object, $version, $cfg['fetch']['splitbyorigin']);
 
@@ -128,7 +128,7 @@ class irrpt
             
     }
 
-    public static function process_as($cvs, $cfg, $asString, $asNumber, $count, $object, $irr, $email, $o_quiet, $o_4, $o_6, $o_cvs)
+    public static function process_as(&$cvs, &$cfg, $asString, $asNumber, $count, $object, $irr, $email, $o_quiet, $o_4, $o_6, $o_cvs)
     {
         if( $o_quiet == 0 )
 		    status(STATUS_INFO, "Processing {$asString} [$object] (Record {$count})");

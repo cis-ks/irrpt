@@ -16,9 +16,9 @@ class TempFile
      *
      * @param string $suffix
      */
-    public function __construct($suffix = 'tempfile')
+    public function __construct($suffix = 'tempfile', $directory = sys_get_temp_dir())
     {
-        $this->path = tempnam(sys_get_temp_dir(), $suffix);
+        $this->path = tempnam($directory, $suffix);
     }
 
     /**

@@ -2,17 +2,18 @@
 <?php
 
 /* Include the necessary configuration files */
-$currentpath = dirname(realpath(__FILE__));
-require_once("{$currentpath}/../inc/irrquery.inc");
-require_once("{$currentpath}/../inc/irrpt.inc");
-require_once("{$currentpath}/../inc/cvs.inc");
-require_once("{$currentpath}/../inc/status.inc");
-require_once("{$currentpath}/../inc/ipv6.inc");
-require_once("{$currentpath}/../inc/tmpfile.inc");
-require_once("{$currentpath}/../inc/exclusions.inc");
+define(__CURRDIR__, dirname(realpath(__FILE__)));
+
+require_once(__CURRDIR__."/../inc/irrquery.inc");
+require_once(__CURRDIR__."/../inc/irrpt.inc");
+require_once(__CURRDIR__."/../inc/cvs.inc");
+require_once(__CURRDIR__."/../inc/status.inc");
+require_once(__CURRDIR__."/../inc/ipv6.inc");
+require_once(__CURRDIR__."/../inc/tmpfile.inc");
+require_once(__CURRDIR__."/../inc/exclusions.inc");
 
 /* Load the base config */
-$cfg = include("{$currentpath}/../conf/irrpt.conf");
+$cfg = include(__CURRDIR__."/../conf/irrpt.conf");
 
 /* Setting the basic Options */
 $o_asn		= 0;			/* Default ASN to fetch: all */
@@ -28,7 +29,7 @@ $o_irrdbConf= [];
 $irr		= new IRRQuery;
 
 /* Open our CVS class */
-$cvs		= new CVS;		
+$cvs		= new CVS($cfg);		
 
 /* Setting Count and offset to default/zero */
 $count		= 0;

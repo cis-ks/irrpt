@@ -1,9 +1,10 @@
 #!/usr/bin/env php
 <?php
 
-$currentpath = dirname(realpath(__FILE__));
-require("{$currentpath}/../conf/irrpt.conf");
-require("{$currentpath}/../inc/cvs.inc");
+define(__CURRDIR__, dirname(realpath(__FILE__)));
+require(__CURRDIR__."/../inc/cvs.inc");
+
+$cfg = include(__CURRDIR__."/../conf/irrpt.conf");
 
 $o_cfgfile	= $cfg['cfgfiles']['default_nag_cfg'];	/* Default config */
 $o_msgfile	= $cfg['cfgfiles']['default_nag_msg'];	/* Default message */
@@ -15,8 +16,7 @@ $cvs->init($cfg['paths']['cvsroot']);
 
 function usage($progname)
 {
-	printf("Usage: %s [-hp] [-c config] [-m message] <previous rev> <current rev>\n\n",
-		$progname);
+	printf("Usage: %s [-hp] [-c config] [-m message] <previous rev> <current rev>\n\n", $progname);
 	printf("Options:\n");
 	printf("   -p    Preview mode (for diagnostic use). Print results to screen instead of\n");
 	printf("         e-mail.\n");
@@ -31,22 +31,19 @@ for ($offset = 1; $offset < $_SERVER['argc']; $offset++) {
 	switch($_SERVER['argv'][$offset]) {
 	    case "-h":
 	    case "--help":
-		usage($_SERVER['argv'][0]);
-
+			usage($_SERVER['argv'][0]);
 	    case "-p":
 	    case "--preview":
-		$o_preview = 1;
-		break;
-
+			$o_preview = 1;
+			break;
 	    case "-c":
 	    case "--config":
-		$o_cfgfile = $_SERVER['argv'][++$offset];
-		break;
-
+			$o_cfgfile = $_SERVER['argv'][++$offset];
+			break;
 	    case "-m":
 	    case "--msgfile":
-		$o_msgfile = $_SERVER['argv'][++$offset];
-		break;
+			$o_msgfile = $_SERVER['argv'][++$offset];
+			break;
 	}
 }
 
@@ -65,7 +62,7 @@ if (!file_exists($o_cfgfile) || !is_readable($o_cfgfile)) {
 	exit(1);
 }
 
-require($o_cfgfile);
+require_once($o_cfgfile);
 
 /* Open message file, read in data */
 if (!($msgfile = fopen($o_msgfile, "r"))) {
