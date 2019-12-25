@@ -1,12 +1,25 @@
 <?php
-/* Including required Utils */
+/* Including required Files */
+require_once(rtrim(__DIR__, '/') . '/irrquery.inc');
 require_once(rtrim(__DIR__, '/') . '/status.inc');
 require_once(rtrim(__DIR__, '/') . '/ipv6.inc');
 require_once(rtrim(__DIR__, '/') . '/utils.inc');
 
+/**
+ * IRRPT Class
+ * 
+ * Class with several functions, used for IRRPT.
+ */
 class irrpt
 {
-    public static function track(&$cvs, $file)
+    /**
+     * Tracking state of an file
+     *
+     * @param object $cvs
+     * @param string $file
+     * @return void
+     */
+    public static function track(CVS &$cvs, $file)
     {  
         if (($rev = $cvs->update($file)) == FALSE) {
             status(STATUS_ERROR, "Error: Unable to perform CVS update, aborting.");
@@ -21,6 +34,20 @@ class irrpt
         return $rev;
     }
 
+    /**
+     * Send Update per E-mail
+     *
+     * @param object $cvs
+     * @param array $cfg
+     * @param string $file
+     * @param string $email
+     * @param string $asString
+     * @param string $object
+     * @param string $rev
+     * @param string $type
+     * 
+     * @return void
+     */
     public static function update_email(&$cvs, &$cfg, $file, $email, $asString, $object, $rev, $type)
     {
         $content = "";
@@ -53,7 +80,18 @@ class irrpt
             mail($cfg['update']['localcopy'], $subject, $content, $headers);
     }
 
-    public static function process(&$cfg, &$irr, $peeras, $version, $object)
+    /**
+     * Processing the resolving of an specifici AS-Set and IP-Version
+     *
+     * @param array $cfg
+     * @param object $irr
+     * @param string $peeras
+     * @param integer $version
+     * @param string $object
+     * 
+     * @return array
+     */
+    public static function process(&$cfg, IRRQuery &$irr, $peeras, $version, $object)
     {
         $resolve_result = $irr->resolve($object, $version, $cfg['fetch']['splitbyorigin']);
 
@@ -124,11 +162,28 @@ class irrpt
             }
         }
 
-        return $resolve_result['asnlist'];
-            
+        return $resolve_result['asnlist'];      
     }
 
-    public static function process_as(&$cvs, &$cfg, $asString, $asNumber, $count, $object, $irr, $email, $o_quiet, $o_4, $o_6, $o_cvs)
+    /**
+     * Processing an AS-Set (Version independently)
+     *
+     * @param object $cvs
+     * @param array $cfg
+     * @param string $asString
+     * @param string $asNumber
+     * @param integer $count
+     * @param string $object
+     * @param object $irr
+     * @param string $email
+     * @param boolean $o_quiet
+     * @param boolean $o_4
+     * @param boolean $o_6
+     * @param boolean $o_cvs
+     * 
+     * @return array
+     */
+    public static function process_as(&$cvs, &$cfg, $asString, $asNumber, $count, $object, IRRQuery $irr, $email, $o_quiet, $o_4, $o_6, $o_cvs)
     {
         if( $o_quiet == 0 )
 		    status(STATUS_INFO, "Processing {$asString} [$object] (Record {$count})");
@@ -140,14 +195,15 @@ class irrpt
         $asnlist4 = [];
         $asnlist6 = [];
 
-        if( $o_4 == 1 && $o_6 == 0 )
-        {
+        if( $o_4 == 1 && $o_6 == 0 ) {
             status(STATUS_NOTICE, "Fetching v4 routes.");
             $asnlist4 = irrpt::process($cfg, $irr, $asNumber, 4, $object);
-        } elseif( $o_6 == 1 && $o_4 == 0 ) {
+        }
+        elseif( $o_6 == 1 && $o_4 == 0 ) {
             status(STATUS_NOTICE, "Fetching v6 routes.");
             $asnlist6 = irrpt::process($cfg, $irr, $asNumber, 6, $object);
-        } else {
+        }
+        else {
             status(STATUS_NOTICE, "Fetching v4 routes.");
             $asnlist4 = irrpt::process($cfg, $irr, $asNumber, 4, $object);
 
@@ -177,8 +233,7 @@ class irrpt
                     utils::update_file_perms($aggfile, $cfg['cfgfiles']['umask']);
                     
                     /* Perform CVS tracking */
-                    if ($o_cvs == 1 )
-                    {
+                    if ($o_cvs == 1) {
 	                    status(STATUS_NOTICE, "Tracking data in CVS.");
   	                    $cvs->init($cfg['paths']['cvsroot']);
 	                    utils::check_file_perms($cfg['paths']['cvsroot']);
@@ -206,8 +261,7 @@ class irrpt
                 }
             }
         } else {
-            foreach(['', 4, 6] as $v)
-            {
+            foreach(['', 4, 6] as $v) {
                 ${'routefile'.$v} = $cfg['paths']['db'] . $asNumber;
                 utils::check_file_perms(${'routefile'.$v});
                 ${'aggfile'.$v} = ${'routefile'.$v} . $cfg['aggregate']['suffix'];
@@ -221,14 +275,13 @@ class irrpt
             utils::update_file_perms($aggfile, $cfg['cfgfiles']['umask']);
 
             /* Perform CVS tracking */
-            if ($o_cvs == 1 )
-            {
+            if ($o_cvs == 1) {
                 status(STATUS_NOTICE, "Tracking data in CVS.");
-                  $cvs->init($cfg['paths']['cvsroot']);
+                $cvs->init($cfg['paths']['cvsroot']);
                 utils::check_file_perms($cfg['paths']['cvsroot']);
 
                 $rev = irrpt::track($cvs, $routefile);
-                  $rev_a = irrpt::track($cvs, $aggfile);
+                $rev_a = irrpt::track($cvs, $aggfile);
 
                 /* Send e-mail updates */
                 status(STATUS_NOTICE, "Send update email.");
@@ -257,14 +310,12 @@ class irrpt
 	    $asnfile = $cfg['paths']['db'] . $object . $cfg['fetch']['asn_suffix'];
 	    status(STATUS_NOTICE, "Writing ASN list to local database.");
 	    if (($output = fopen($asnfile, "w")) == false) 
-        {
 		    status(STATUS_WARNING, "Can not open ASN list output file for {$asString}, skipping this record.");
-	    }
-	    for($i = 0; $i < sizeof($asnlist); $i++)
-        {
+
+        for($i = 0; $i < sizeof($asnlist); $i++)
 		    fwrite($output, sprintf("%s\n", preg_replace("/[aA][sS]/", "", $asnlist[$i])));
-        }
-	    fclose($output);
+
+        fclose($output);
         utils::update_file_perms($asnfile, $cfg['cfgfiles']['umask']);
     }
 

@@ -93,5 +93,23 @@ class utils
 
         fclose($dst_fp);
     }
+
+    
+    /* performs basic verification on ASN and returns a numeric and string version */
+    function check_asn_arg($asn, &$asn_number, &$asn_string) {
+        if (preg_match("/^AS[0-9]+/i", $asn)) {
+            $asn_string = strtoupper($asn);
+            $asn_number = substr($asn, 2, strlen($asn));
+            return true;
+        }
+        else {
+            if(preg_match("/^[0-9]+/", $asn)) {
+                $asn_number = $asn;
+                $asn_string = "AS".$asn;
+                return true;
+            }
+        }
+        return false;
+    }
 }
 ?>
