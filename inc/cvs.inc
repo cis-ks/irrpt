@@ -1,38 +1,73 @@
 <?php
-
-/* Cheesey class for our CVS access */
+/**
+ * Basic Class for working with CVS-Repositories
+ */
 class CVS {
-	var $cvsroot;
+	/**
+	 * root-directory of CVS
+	 *
+	 * @var string
+	 */
+	protected $_cvsroot;
 
-	function init($cvsroot)
+	/**
+	 * Configuration
+	 *
+	 * @var array
+	 */
+	protected $_cfg;
+
+	/**
+	 * Constructor
+	 *
+	 * @param [type] $cfg
+	 */
+	public function __construct(&$cfg)
 	{
-		$this->cvsroot = $cvsroot;
+		$this->_cfg =& $cfg;
+	}
+
+	/**
+	 * Initialize the CVS Root Direcotry
+	 *
+	 * @param string $cvsroot
+	 * 
+	 * @return void
+	 */
+	public function init($cvsroot) 
+	{
+		$this->_cvsroot = $cvsroot;
 		putenv("CVSROOT={$cvsroot}");
 	}
 
-	function get_diff($file, $rev)
+	/**
+	 * Provide Diff of File and given Revision
+	 *
+	 * @param string $file
+	 * @param string $rev
+	 * @return void
+	 */
+	public function get_diff($file, $rev)
 	{
-		global $cfg;
-
 		$results = "";
 
-		if (!file_exists($cfg['tools']['cvs']) || !is_executable($cfg['tools']['cvs']))
-			return FALSE;
+		if (!file_exists($this->_cfg['tools']['cvs']) || !is_executable($this->_cfg['tools']['cvs']))
+			return false;
 
 		if (!file_exists($file) || !is_readable($file))
-			return FALSE;
+			return false;
 
-		$cmd  = "{$cfg['tools']['cvs']} diff {$cfg['diff']['params']} ";
+		$cmd  = "{$this->_cfg['tools']['cvs']} diff {$this->_cfg['diff']['params']} ";
 		$cmd .= "-r {$rev['old']} -r {$rev['new']} {$file}";
 
 		if (!($cvscmd = popen($cmd, "r")))
-			return FALSE;
+			return false;
 
-		$format = strtolower($cfg['diff']['output_format']);
+		$format = strtolower($this->_cfg['diff']['output_format']);
 
 		while (!feof($cvscmd)) {
 			$line = fgets($cvscmd, 256);
-			$line = str_replace($cfg['paths']['base'], "", $line);
+			$line = str_replace($this->_cfg['paths']['base'], "", $line);
 
 			if ($format != "fulldiff") {
 				$pfx = substr($line, 0, 1);
@@ -60,34 +95,44 @@ class CVS {
 		return $results;
 	}
 
-	function get_complete($file)
+	/**
+	 * Return complete file from CVS Repository
+	 *
+	 * @param string $file
+	 * @return void
+	 */
+	public function get_complete($file)
 	{
 		$results = "";
 
 		if (!($routes = fopen($file, "r")))
-			return FALSE;
+			return false;
 
-		while (!feof($routes)) {
+		while (!feof($routes))
 			$results .= fgets($routes, 256);
-		}
 
 		fclose($routes);
 
 		return $results;
 	}
 
-	function update($file)
+	/**
+	 * Updating a File
+	 *
+	 * @param string $file
+	 * @return void
+	 */
+	public function update($file)
 	{
-		global $cfg;
 
-		if (!file_exists($cfg['tools']['cvs']) || !is_executable($cfg['tools']['cvs']))
-			return FALSE;
+		if (!file_exists($this->_cfg['tools']['cvs']) || !is_executable($this->_cfg['tools']['cvs']))
+			return false;
 
-		chdir($cfg['paths']['db']);
+		chdir($this->_cfg['paths']['db']);
 
 		/* CVS add */
 		if (!($results = popen("{$cfg['tools']['cvs']} add ${file} 2>&1", "r")))
-			return FALSE;
+			return false;
 
 		while (!feof($results)) {
 			$line = rtrim(fgets($results, 256));
@@ -101,11 +146,9 @@ class CVS {
 
 		pclose($results);
 
-
-
 		/* CVS commit */
-		if (!($results = popen("{$cfg['tools']['cvs']} commit -m update {$file}", "r")))
-			return FALSE;
+		if (!($results = popen("{$this->_cfg['tools']['cvs']} commit -m update {$file}", "r")))
+			return false;
 
 		while (!feof($results)) {
 			$line = rtrim(fgets($results, 256));

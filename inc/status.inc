@@ -1,5 +1,4 @@
 <?php
-
 define("STATUS_INFO",		0);
 define("STATUS_NOTICE",		1);
 define("STATUS_WARNING",	2);
@@ -11,22 +10,21 @@ function status($level, $data)
 
 	switch ($level) {
 	    case STATUS_INFO:
-		printf("%s\n", $data);
-		break;
+			printf("%s\n", $data);
+			break;
 	    case STATUS_NOTICE:
-		if ($o_verbose)
-			printf("   - %s\n", $data);
-		break;
+			if ($o_verbose)
+				printf("   - %s\n", $data);
+			break;
 	    case STATUS_WARNING:
-		if ($o_verbose)
-			printf("   * WARNING: %s\n", $data);
-		break;
+			if ($o_verbose)
+				printf("   * WARNING: %s\n", $data);
+			break;
 	    case STATUS_ERROR:
-		printf("   ! ERROR: %s\n", $data);
-		break;
+			printf("   ! ERROR: %s\n", $data);
+			break;
 	    default:
-		printf("ERROR: Unknown status level.\n");
+			printf("ERROR: Unknown status level.\n");
 	}
 }
-
 ?>

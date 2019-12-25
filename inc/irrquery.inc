@@ -1,447 +1,493 @@
 <?php
+/* Requiring necessary includes */
+require_once(rtrim(__DIR__, '/') . '/status.inc');
 
-/*
- *  A simple class for doing raw IRRd queries. This was originally done with 
- *  IRRToolSet, but we were forced to whip this up after not being able to 
- *  find any network admin who could actually manage to successfully compile 
- *  IRRToolSet out of the box. :)
- * 
- *  Also includes a few functions to make processing the class easier.
- *
+/**
+ * Generic class to do raw IRR-Queries
  */
-
- /*
- * {
- *   $routes = $irr->get_v4_routes_by_origin($object);
- *   if ($routes == FALSE) {
- *     $data = $irr->get_data_by_set($object);
- *     $routes = array_merge($routes, $data['routes4']);
- *   }
- * }
- */
-
-/* Figure out if we have an AUT-NUM or an AS-SET, and resolve it for v4 addresses */
-function resolve_v4($irr, $object)
+class IRRQuery
 {
-  $asnlist = array();
-  $routes4 = $irr->get_v4_routes_by_origin($object);
-  if ($routes4 == FALSE)
-  {
-    if (($data = $irr->get_data_by_set($object, '4' )) != FALSE)
-    {
-      $routes4 = $data['routes4'];
-      $asnlist = $data['asns'];
-    }
-  }
-  else
-  {
-    $asnlist[0] = $object;
-  }
+    /**
+     * Hostname for Querying data
+     * @var string $hostname
+     */
+    protected $_hostname = '';
 
-  if ($routes4 == FALSE) {
-    status(STATUS_WARNING, "No registered v4 routes found for this AS.");
-  }
+    /**
+     * Port for IRR-Server
+     * @var integer $port
+     */
+    protected $_port = 43;
 
-  $result = array($routes4, $asnlist);
-  return $result;
-}
+    /**
+     * Socket for Communication with IRR
+     * @var filedescriptor $communication
+     */
+    protected $_communication;
 
-/* Figure out if we have an AUT-NUM or an AS-SET, and resolve it for v6 addresses */
-function resolve_v6($irr, $object)
-{
-  $asnlist = array();
-  $routes6 = $irr->get_v6_routes_by_origin($object);
-  if ($routes6 == FALSE)
-  {
-    if (($data = $irr->get_data_by_set($object, '6')) != FALSE)
-    {
-      $routes6 = $data['routes6'];
-      $asnlist = $data['asns'];
-    }
-  }
-  else
-  {
-    $asnlist[0] = $object;
-  }
+    /**
+     * Switch to use Caching
+     * @var boolean $caching
+     */
+    protected $_caching = false;
 
-  if($routes6 == FALSE) {
-    status(STATUS_WARNING, "No registered v6 routes found for this AS.");
-  }
+    /**
+     * Internal Cache
+     * @var array $cache
+     */
+    protected $_cache;
 
-  $result = array($routes6, $asnlist);
-  return $result;
-}
+    /**
+     * Last command send
+     * @var string $lastcommand
+     */
+    public $lastcommand;
 
-
-class IRRQuery {
-  var $host;
-  var $port;
-  var $fp;
-
-  var $caching;
-  var $cache;
-
-  var $lastcommand;
-
-  function __construct()
-  {
-    $this->caching = FALSE;
-  }
-
-  function _multi_mode()
-  {
-    $this->_send("!!\n");
-
-    return TRUE;
-  }
-
-  function _identify()
-  {
-    $this->_send("!nIRRPowerTools\n");
-    $this->_response();
-
-    return TRUE;
-  }
-
-  function _send($output)
-  {
-    $this->lastcommand = rtrim($output);
-
-    if (fwrite($this->fp, $output) == FALSE) {
-      status(STATUS_ERROR, "IRR Query - Unexpected write() error on socket.");
-      return FALSE;
+    /**
+     * Constructor Functions
+     * 
+     * @return 
+     */
+    public function __construct($host = null, $port = null) {
+        if($host != null && $port != null) {
+            return $this->connect($host, $port);
+        }
     }
 
-    return TRUE;
-  }
-
-  function _readline()
-  {
-    if (($data = fgets($this->fp, 256)) == FALSE) {
-      status(STATUS_ERROR, "IRR Query - Unexpected read() error on socket.");
-      return FALSE;
+    protected function _multi_mode() {
+        $this->_send("!!\n");
+        return true;
     }
 
-    return $data;
-  }
+    /**
+     * Identify our softwaretool to the IRR
+     *
+     * @return boolean
+     */
+    protected function _identify() {
+        $this->_send("!nIRRPowerTools2\n");
+        $this->_response();
 
-  function _response()
-  {
-    $data = "";
-    $datalen = 0;
-
-    $header = rtrim($this->_readline());
-
-    switch ($header[0]) {
-      case "C":
-        return TRUE;
-      case "D":
-        status(STATUS_WARNING, "IRR Query - key not found - Query: " . $this->lastcommand);
-        return FALSE;
-      case "E":
-        return TRUE;
-      case "F":
-        status(STATUS_WARNING, "Query ({$this->lastcommand}) failed:" . substr($header, 1));
-        return FALSE;
+        return true;
     }
 
-    $header = rtrim($header);
+    /**
+     * Sending data to the IRR-Server
+     *
+     * @param string $output
+     * @return boolean
+     */
+    protected function _send($output) {
+        $this->lastcommand = rtrim($output);
 
-    if ($header[0] == 'A')
-      $datalen = intval(substr($header,1));
-    else {
-      status(STATUS_ERROR, "IRR Query - Parse error looking for data length.");
-      return FALSE;
+        if (fwrite($this->_communication, $output) == false) {
+            status(STATUS_ERROR, "IRR Query - Unexpected write() error on socket.");
+            return false;
+        }
+    
+        return true;
     }
 
-    while (strlen($data) < $datalen)
-      $data .= $this->_readline();
+    /**
+     * Read one line of buffer
+     *
+     * @return string
+     */
+    protected function _readline() {
+        if (($data = fgets($this->_communication, 256)) == false) {
+            status(STATUS_ERROR, "IRR Query - Unexpected read() error on socket.");
+            return false;
+        }
+  
+        return $data;
+    }
+  
+    /**
+     * Processing Response
+     *
+     * @return string
+     */
+    function _response() {
+        $data = "";
+        $datalen = 0;
 
-    if ($datalen != strlen($data))
-      status(STATUS_ERROR, "IRR Query - Data read doesn't match expected length.");
+        $header = rtrim($this->_readline());
 
-    $footer = $this->_readline();
+        switch ($header[0]) {
+            case "C":
+                return true;
+            case "D":
+                status(STATUS_WARNING, "IRR Query - key not found - Query: " . $this->lastcommand);
+                return false;
+            case "E":
+                return true;
+            case "F":
+                status(STATUS_WARNING, "Query ({$this->lastcommand}) failed:" . substr($header, 1));
+                return false;
+        }
 
-    return rtrim($data);
-  }
+        $header = rtrim($header);
 
-  /*
-  * Not sure why this is a good idea, but IRR still lets people register
-  * classful routes with no /prefixlength. Scan for this and fix it.
-  */
-  function _classful_fix($routes)
-  {
-    for ($i=0;$i<sizeof($routes);$i++) {
-      if (strrpos($routes[$i], "/") == FALSE) {
-        $octets = explode(".", $routes[$i]);
-        $first = intval($octets[0]);
-
-        if (($first) > 0 && ($first < 128))
-          $length = "/8";
-        else if (($first) > 0 && ($first < 192))
-          $length = "/16";
-        else if (($first) > 0 && ($first < 255))
-          $length = "/24";
+        if ($header[0] == 'A') {
+            $datalen = intval(substr($header,1));
+        }
         else {
-          status(STATUS_ERROR, "Invalid prefix: {$routes[$i]}");
-          unset($routes[$i]);
+            status(STATUS_ERROR, "IRR Query - Parse error looking for data length.");
+            return false;
         }
 
-        $routes[$i] .= $length;
-      }
+        while (strlen($data) < $datalen)
+            $data .= $this->_readline();
+
+        if ($datalen != strlen($data))
+            status(STATUS_ERROR, "IRR Query - Data read doesn't match expected length.");
+
+        $footer = $this->_readline();
+
+        return rtrim($data);
     }
+  
+    /*
+    * Not sure why this is a good idea, but IRR still lets people register
+    * classful routes with no /prefixlength. Scan for this and fix it.
+    */
 
-    return $routes;
-  }
+    /**
+     * Not sure why this is a good idea, but IRR still lets people register
+     * classful routes with no /prefixlength. Scan for this and fix it.
+     *
+     * @param string $routes
+     * @return string
+     */
+    protected function _classful_fix($routes) {
+        for ($i=0;$i<sizeof($routes);$i++) {
+            if (strrpos($routes[$i], "/") == false) {
+                $octets = explode(".", $routes[$i]);
+                $first = intval($octets[0]);
 
-  function connect($host, $port)
-  {
-    $this->host = $host;
-    $this->port = $port;
+                if (($first) > 0 && ($first < 128)) {
+                    $length = "/8";
+                }
+                elseif (($first) > 0 && ($first < 192)) {
+                    $length = "/16";
+                }
+                elseif (($first) > 0 && ($first < 255)) {
+                    $length = "/24";
+                }
+                else {
+                    status(STATUS_ERROR, "Invalid prefix: {$routes[$i]}");
+                    unset($routes[$i]);
+                }
 
-    @$this->fp = fsockopen($host, $port, $errno, $errstr, 15);
+                $routes[$i] .= $length;
+            }
+        }
 
-    if (!$this->fp) {
-      status(STATUS_ERROR, "{$errstr} (errno {$errno})");
-      return FALSE;
+        return $routes;
     }
+  
+    /**
+     * Connect to Server
+     *
+     * @param string $host
+     * @param integer $port
+     * @return void
+     */
+    public function connect($host, $port) {
+        $this->_hostname = $host;
+        $this->_port = $port;
 
-    $this->_multi_mode();
-    $this->_identify();
+        @$this->_communication = fsockopen($this->_hostname, $this->_port, $errno, $errstr, 15);
 
-    return $this;
-  }
+        if (!$this->_communication) {
+            status(STATUS_ERROR, "{$errstr} (errno {$errno})");
+            return false;
+        }
 
-  function close()
-  {
-    $this->_send("!q\n");
+        $this->_multi_mode();
+        $this->_identify();
 
-    fclose($this->fp);
-  }
-
-  function set_sources($sources)
-  {
-    $this->_send("!s-{$sources}\n");
-
-    if (($results = $this->_response()) == FALSE) {
-      return FALSE;
+        return $this;
     }
+  
+    /**
+     * Closing the Connection to the Server
+     *
+     * @return void
+     */
+    public function close() {
+        $this->_send("!q\n");
 
-    return explode(" ", $results);
-  }
-
-  function get_sources()
-  {
-    $this->_send("!s-lc\n");
-
-    if (($results = $this->_response()) == FALSE) {
-      return FALSE;
+        fclose($this->_communication);
     }
-
-    return $results;
-  }
-
-  function cache_set($mode)
-  {
-    if ($mode) {
-      $this->caching = TRUE;
-    } else {
-      $this->caching = FALSE;
-    }
-  }
-
-  function cache_clear()
-  {
-    unset($this->cache);
-  }
-
-
-  function _cache_query($type, $record)
-  {
-    if ($this->caching) {
-      if (isset($this->cache[$type][$record])) {
-        /* printf("Cache hit: %s\n", $record); */
-        $this->cache[$type][$record]['hits']++;
-
-        return $this->cache[$type][$record]['data'];
-      }
-    }
-
-    return FALSE;
-  }
-
-  function _cache_add($type, $record, $data)
-  {
-    $this->cache[$type][$record]['data'] = $data;
-    $this->cache[$type][$record]['time'] = time();
-    $this->cache[$type][$record]['hits'] = 0;
-  }
-
-  function get_v4_routes_by_origin($origin)
-  {
-
-    /* Prepend 'AS' to set if not provided */
-
-    if (preg_match("/^AS./i", $origin) == 0) 
+  
+    /**
+     * Set the used sources
+     *
+     * @param string $sources
+     * @return void
+     */
+    public function set_sources($sources)
     {
-      $origin = 'AS'.$origin;
+        $this->_send("!s-{$sources}\n");
+
+        if (($results = $this->_response()) == false)
+            return false;
+
+        return explode(" ", $results);
+    }
+  
+    /**
+     * Get the uses Sources
+     *
+     * @return void
+     */
+    public function get_sources()
+    {
+        $this->_send("!s-lc\n");
+
+        if (($results = $this->_response()) == false)
+            return false;
+
+        return $results;
+    }
+  
+    /**
+     * Setting the Cach-Mode
+     *
+     * @param boolean $mode
+     * 
+     * @return void
+     */
+    public function set_cache($mode)
+    {
+        if(is_bool($mode)) {
+            $this->_caching = $mode;
+        }
+        else {
+            $this->_caching = false;
+        }
+    }
+  
+    /**
+     * Clearing the Cache
+     *
+     * @return void
+     */
+    public function clear_cache()
+    {
+        unset($this->cache);
     }
 
-    /* Anything cached? */
-
-    if (($results = $this->_cache_query("origin", $origin)) != FALSE)
-      return $results;
-
-    /* Get v4 prefixes */
-
-    $this->_send("!g{$origin}\n");
-    if (($results = $this->_response()) == FALSE)
+    /**
+     * Query the Cache
+     *
+     * @param string $type
+     * @param string $record
+     * 
+     * @return void
+     */
+    protected function _query_cache($type, $record)
     {
-      return FALSE;
+        if ($this->_caching) {
+            if (isset($this->_cache[$type][$record])) {
+                /* printf("Cache hit: %s\n", $record); */
+                $this->_cache[$type][$record]['hits']++;
+
+                return $this->_cache[$type][$record]['data'];
+            }
+        }
+
+        return false;
     }
 
-    else 
+    /**
+     * Adding Data to Cache
+     *
+     * @param string $type
+     * @param string $record
+     * @param string $data
+     * 
+     * @return void
+     */  
+    protected function _add_cache($type, $record, $data)
     {
-      $results = $this->_classful_fix(explode(" ", $results));
-
-      natsort($results);
-      $results = array_values(array_unique($results));
-
-      if ($this->caching)
-        $this->_cache_add("origin", $origin, $results);
-    }
-    return $results;
-  }
-
-  function get_v6_routes_by_origin($origin)
-  {
-
-    /* Prepend 'AS' to set if not provided */
-
-    if (preg_match("/^AS./i", $origin) == 0) 
-    {
-      $origin = 'AS'.$origin;
+        $this->_cache[$type][$record]['data'] = $data;
+        $this->_cache[$type][$record]['time'] = time();
+        $this->_cache[$type][$record]['hits'] = 0;
     }
 
-    /* Anything cached? */
-
-    if (($results = $this->_cache_query("origin6", $origin)) != FALSE)
-      return $results;
-
-    /* Get v6 prefixes */
-
-    $this->_send("!6{$origin}\n");
-    if (($results = $this->_response()) == FALSE)
+    /**
+     * Getting All Routes by Specific Origin-AS
+     *
+     * @param string $origin
+     * @param integer $version
+     * 
+     * @return void
+     */
+    public function get_routes_by_origin($origin, $version)
     {
-      return FALSE;
+        if(!in_array($version, [4, 6]))
+            return false;
+
+        $type = ($version == 6) ? 'origin6' : 'origin';
+        $cmd = ($version == 6) ? '6' : 'g';
+
+        /* Prepend 'AS' to set if not provided */
+        if (preg_match("/^AS./i", $origin) == 0) 
+            $origin = 'AS'.$origin;
+  
+        /* Anything cached? */
+        if (($results = $this->_query_cache($type, $origin)) != false)
+            return $results;
+  
+        /* Get v4 prefixes */
+        $this->_send("!{$cmd}{$origin}\n");
+
+        if (($results = $this->_response()) == false) {
+            return false;
+        }
+        else  {
+            $results = ($version == 4) ? $this->_classful_fix(explode(" ", $results)) : explode(" ", $results);
+
+            $results = ($version == 6) ? array_map('strtolower', $results) : $results;
+            natsort($results);
+            $results = array_values(array_unique($results));
+
+            if ($this->_caching)
+                $this->_add_cache("origin", $origin, $results);
+        }
+        return $results;
     }
 
-    else 
+    /**
+     * Get all AS-Members by AS-Set
+     *
+     * @param string $set
+     * @param boolean $recursive
+     * 
+     * @return array
+     */
+    public function get_members_by_set($set, $recursive = false)
     {
-      $results = explode(" ", $results);
+        /* Prepend 'AS' to set if not provided */
+        if (preg_match("/^AS./i", $set) == 0) 
+            $set = 'AS'.$set;
 
-      $results = array_map('strtolower', $results);
-      natsort($results);
-      $results = array_values(array_unique($results));
+        /* Query the set data */
+        if ($recursive == true) {
+            $this->_send("!i{$set},1\n");
+        }
+        else {
+            $this->_send("!i{$set}\n");
+        }       
 
-      if ($this->caching)
-        $this->_cache_add("origin6", $origin, $results);
+        if (($response = $this->_response()) == false) {
+            return false;
+        }
+
+        $data = explode(" ", $response);
+        $data = array_values(array_unique($data));
+        return $data;
     }
-    return $results;
-  }
 
-  function get_data_by_set($set, $version)
-  {
-    $routes4 = array();
-    $routes6 = array();
-    $results4= array();
-    $results6 = array();
-
-    $stats['missing_autnum']  = 0;
-    $stats['missing_autnum_v6']  = 0;
-
-    /* XXX - This should be caching results, maybe? */
-
-    /* Prepend 'AS' to set if not provided */
-    if (preg_match("/^AS./i", $set) == 0) 
+    /**
+     * Getting all Data by an AS-Set
+     *
+     * @param string $set
+     * @param integer $version
+     * @param boolean $splitbyorigin
+     * 
+     * @return array
+     */
+    public function get_data_by_set($set, $version, $splitbyorigin = false)
     {
-      $set = 'AS'.$set;
-    }
+        /* Defining the result-Array */
+        $routes4 = [];
+        $routes6 = [];
 
-    /* Query the set data */
-    $this->_send("!i{$set},1\n");
-    if (($response = $this->_response()) == FALSE)
-      return FALSE;
-    $autnumlist = explode(" ", $response);
+        $results4 = [];
+        $results6 = [];
 
-    /* Detect route-set, otherwise assume as-set or autnum */
-    if ((strchr($response, '.') != FALSE) && (stristr($response, "AS") == FALSE)) {
-      $routes4 = $this->_classful_fix($autnumlist);
-    } 
-    else 
-    {
-      for ($i = 0; $i < sizeof($autnumlist); $i++) 
-      {
-        if($version == '4')
+        $stats['missing_autnum_v4']  = 0;
+        $stats['missing_autnum_v6']  = 0;
+
+        /* Prepend 'AS' to set if not provided */
+        if (preg_match("/^AS./i", $set) == 0) 
+            $set = 'AS'.$set;
+  
+        /* Getting the Autonomous List from Set */
+        $autnumlist = $this->get_members_by_set($set, true);
+        if($autnumlist === false)
+            return false;
+
+        /* Detect route-set, otherwise assume as-set or autnum */
+        if ( strstr($autnumlist[0], '.') != false && stristr($autnumlist[0], 'AS') == false && $version == 4) {
+            $routes4[0] = $this->_classful_fix($autnumlist);
+        }
+        else {
+            foreach($autnumlist as $asnumber) {
+                $results = $this->get_routes_by_origin($asnumber, $version);
+                if($results == false) {
+                    $stats['missing_autnum_v' . $version]++;
+                    continue;
+                }
+
+                if($splitbyorigin == true) {
+                    if(array_key_exists(strtoupper($asnumber), ${'results'.$version})) {
+                        ${'results'.$version}[$asnumber] = array_merge(${'results'.$version}[$asnumber], $results);
+                    }
+                    else {
+                        ${'results'.$version}[$asnumber] = $results;
+                    }
+                }
+                else {
+                    ${'results'.$version}[0] = (array_key_exists(0, ${'results'.$version})) ? array_merge(${'results'.$version}[0], $results) : $results;
+                }
+            }
+        }
+
+        foreach([4, 6] as $v)
         {
-          $results4 = $this->get_v4_routes_by_origin($autnumlist[$i]);
-          if ($results4 == FALSE) 
-          {
-            $stats['missing_autnum']++;
-            continue;
-          }
-        }
-        if($version == '6')
-        {
-          $results6 = $this->get_v6_routes_by_origin($autnumlist[$i]);
-          if ($results6 == FALSE) 
-          {
-            $stats['missing_autnum_v6']++;
-            continue;
-          }
+            foreach(${'results'.$v} as $idx => $routes) {
+                natsort($routes);
+                $results['routes'.$v][$idx] = array_values(array_unique($routes));
+            }
         }
 
-        $routes4 = array_merge($routes4, $results4);
-        $routes6 = array_merge($routes6, $results6);
-      }
+        $results['asns'] = array_values(array_unique($autnumlist));
+        $results['stats'] = $stats;
+
+        return $results;
     }
-    natsort($routes4);
-    natsort($routes6);
 
-    $results['routes4'] = array_values(array_unique($routes4));
-    $results['routes6'] = array_values(array_unique($routes6));
-
-    $results['asns']   = array_values(array_unique($autnumlist));
-    $results['stats']  = $stats;
-
-    return $results;
-  }
-
-  function get_members_by_set($set, $recursive)
-  {
-    $routes = array();
-
-    /* Prepend 'AS' to set if not provided */
-    if (preg_match("/^AS./i", $set) == 0) 
+    /**
+     * Resolving Data by Object and Version into Array
+     *
+     * @param string $object
+     * @param integer $version
+     * @param boolean $splitbyorigin
+     * 
+     * @return array
+     */
+    public function resolve($object, $version, $splitbyorigin = false)
     {
-      $set = 'AS'.$set;
+        $results['routes'] = $this->get_routes_by_origin($object, $version);
+        if($results['routes'] == false) {
+            if( ($data = $this->get_data_by_set($object, $version, $splitbyorigin)) != false) {
+                $results['routes'] = $data['routes'.$version];
+                $results['asnlist'] = $data['asns'];
+            }
+        }
+        else {
+            $results['asnlist'][0] = $object;
+        }
+
+        if($results['routes'] == false) {
+            status(STATUS_WARNING, "No registered v".$version." routes found for this AS.");
+        }
+        
+        return $results;
     }
-
-    /* Query the set data */
-    if ($recursive == TRUE)
-      $this->_send("!i{$set},1\n");
-    else
-      $this->_send("!i{$set}\n");
-
-    if (($response = $this->_response()) == FALSE)
-      return FALSE;
-
-    $data = explode(" ", $response);
-
-    $data = array_values(array_unique($data));
-    return $data;
-  }
-
 }
-
 ?>
